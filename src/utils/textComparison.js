@@ -1,11 +1,12 @@
 import { diffChars, diffWordsWithSpace, diffArrays, diffSentences, Diff } from "diff";
 import { diff_match_patch } from 'diff-match-patch';
 
+// Enhanced comparison that focuses on highlighting differences in the right document
 export const compareHtmlDocuments = (leftHtml, rightHtml) => {
   return new Promise((resolve) => {
     setTimeout(() => {
       try {
-        console.log('Starting optimized document comparison with proper alignment...');
+        console.log('Starting enhanced right-side focused comparison...');
         
         // Quick text comparison first
         const leftText = extractPlainText(leftHtml);
@@ -22,33 +23,22 @@ export const compareHtmlDocuments = (leftHtml, rightHtml) => {
           return;
         }
 
-        console.log('Documents differ, performing alignment-preserving comparison...');
+        console.log('Documents differ, performing right-side focused comparison...');
         
-        // First, ensure structural alignment with proper placeholders
-        const { leftAligned, rightAligned, structuralSummary } = 
-          ensureStructuralAlignment(leftHtml, rightHtml);
+        // Enhanced comparison focusing on right-side highlighting
+        const { leftProcessed, rightProcessed, comparisonSummary } = 
+          performEnhancedComparison(leftHtml, rightHtml);
 
-        // Then apply content-level comparisons
-        const { leftFinal, rightFinal, contentSummary } =
-          applyContentComparison(leftAligned, rightAligned);
-
-        const summary = {
-          additions: structuralSummary.additions + contentSummary.additions,
-          deletions: structuralSummary.deletions + contentSummary.deletions,
-          changes: 0
-        };
-        summary.changes = summary.additions + summary.deletions;
-
-        const detailed = generateDetailedReport(leftFinal, rightFinal);
+        const detailed = generateDetailedReport(leftProcessed, rightProcessed);
 
         const result = {
-          leftDiffs: [{ type: "modified", content: leftFinal }],
-          rightDiffs: [{ type: "modified", content: rightFinal }],
-          summary,
+          leftDiffs: [{ type: "modified", content: leftProcessed }],
+          rightDiffs: [{ type: "modified", content: rightProcessed }],
+          summary: comparisonSummary,
           detailed
         };
 
-        console.log('Comparison completed successfully with proper alignment');
+        console.log('Enhanced right-side comparison completed successfully');
         resolve(result);
         
       } catch (error) {
@@ -62,6 +52,598 @@ export const compareHtmlDocuments = (leftHtml, rightHtml) => {
       }
     }, 10);
   });
+};
+
+// Enhanced comparison function that focuses on right-side highlighting
+const performEnhancedComparison = (leftHtml, rightHtml) => {
+  const leftDiv = htmlToDiv(leftHtml);
+  const rightDiv = htmlToDiv(rightHtml);
+  
+  let totalAdditions = 0;
+  let totalDeletions = 0;
+  
+  // Step 1: Compare and highlight images
+  const imageSummary = compareAndHighlightImages(leftDiv, rightDiv);
+  totalAdditions += imageSummary.additions;
+  totalDeletions += imageSummary.deletions;
+  
+  // Step 2: Compare and highlight tables
+  const tableSummary = compareAndHighlightTables(leftDiv, rightDiv);
+  totalAdditions += tableSummary.additions;
+  totalDeletions += tableSummary.deletions;
+  
+  // Step 3: Compare and highlight text content
+  const textSummary = compareAndHighlightText(leftDiv, rightDiv);
+  totalAdditions += textSummary.additions;
+  totalDeletions += textSummary.deletions;
+  
+  return {
+    leftProcessed: leftDiv.innerHTML,
+    rightProcessed: rightDiv.innerHTML,
+    comparisonSummary: {
+      additions: totalAdditions,
+      deletions: totalDeletions,
+      changes: totalAdditions + totalDeletions
+    }
+  };
+};
+
+// Enhanced image comparison with right-side highlighting
+const compareAndHighlightImages = (leftDiv, rightDiv) => {
+  const leftImages = Array.from(leftDiv.querySelectorAll('img'));
+  const rightImages = Array.from(rightDiv.querySelectorAll('img'));
+  
+  let additions = 0;
+  let deletions = 0;
+  
+  // Create image signatures for comparison
+  const getImageSignature = (img) => ({
+    src: img.src || '',
+    alt: img.alt || '',
+    width: img.width || img.style.width || '',
+    height: img.height || img.style.height || '',
+    className: img.className || ''
+  });
+  
+  const leftImageSigs = leftImages.map(getImageSignature);
+  const rightImageSigs = rightImages.map(getImageSignature);
+  
+  // Track matched images
+  const rightMatched = new Set();
+  const leftMatched = new Set();
+  
+  // Find exact matches first
+  leftImages.forEach((leftImg, leftIndex) => {
+    if (leftMatched.has(leftIndex)) return;
+    
+    const leftSig = leftImageSigs[leftIndex];
+    
+    rightImages.forEach((rightImg, rightIndex) => {
+      if (rightMatched.has(rightIndex)) return;
+      
+      const rightSig = rightImageSigs[rightIndex];
+      
+      // Check for exact match
+      if (leftSig.src === rightSig.src && 
+          leftSig.alt === rightSig.alt &&
+          leftSig.width === rightSig.width &&
+          leftSig.height === rightSig.height) {
+        leftMatched.add(leftIndex);
+        rightMatched.add(rightIndex);
+        return;
+      }
+    });
+  });
+  
+  // Highlight unmatched images in right document
+  rightImages.forEach((rightImg, rightIndex) => {
+    if (!rightMatched.has(rightIndex)) {
+      // This image is new in the right document
+      rightImg.classList.add('git-image-added');
+      rightImg.style.outline = '3px solid #22c55e';
+      rightImg.style.outlineOffset = '3px';
+      rightImg.style.backgroundColor = '#f0fdf4';
+      rightImg.style.borderRadius = '4px';
+      rightImg.style.padding = '4px';
+      
+      // Add a label
+      const label = document.createElement('div');
+      label.className = 'image-change-label';
+      label.style.cssText = `
+        position: absolute;
+        top: -8px;
+        left: -8px;
+        background: #22c55e;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: bold;
+        z-index: 10;
+      `;
+      label.textContent = 'NEW';
+      
+      // Wrap image in relative container for label positioning
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      rightImg.parentNode.insertBefore(wrapper, rightImg);
+      wrapper.appendChild(rightImg);
+      wrapper.appendChild(label);
+      
+      additions++;
+    }
+  });
+  
+  // Add placeholders in right document for images that were removed
+  leftImages.forEach((leftImg, leftIndex) => {
+    if (!leftMatched.has(leftIndex)) {
+      // This image was removed from the right document
+      const placeholder = document.createElement('div');
+      placeholder.className = 'image-placeholder placeholder-removed';
+      placeholder.style.cssText = `
+        border: 2px dashed #ef4444;
+        background-color: #fef2f2;
+        color: #991b1b;
+        padding: 20px;
+        margin: 16px 0;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: 600;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      `;
+      
+      const icon = document.createElement('span');
+      icon.style.fontSize = '24px';
+      icon.style.marginBottom = '8px';
+      icon.textContent = '🖼️';
+      
+      const text = document.createElement('span');
+      text.textContent = 'Image Removed';
+      text.style.fontSize = '14px';
+      
+      const detail = document.createElement('span');
+      detail.textContent = leftImg.alt || 'Image';
+      detail.style.fontSize = '12px';
+      detail.style.opacity = '0.8';
+      detail.style.marginTop = '4px';
+      
+      placeholder.appendChild(icon);
+      placeholder.appendChild(text);
+      placeholder.appendChild(detail);
+      
+      // Insert placeholder at appropriate position in right document
+      if (leftIndex < rightImages.length) {
+        rightImages[leftIndex].parentNode.insertBefore(placeholder, rightImages[leftIndex]);
+      } else {
+        rightDiv.appendChild(placeholder);
+      }
+      
+      deletions++;
+    }
+  });
+  
+  return { additions, deletions };
+};
+
+// Enhanced table comparison with right-side highlighting
+const compareAndHighlightTables = (leftDiv, rightDiv) => {
+  const leftTables = Array.from(leftDiv.querySelectorAll('table'));
+  const rightTables = Array.from(rightDiv.querySelectorAll('table'));
+  
+  let additions = 0;
+  let deletions = 0;
+  
+  // Compare tables by structure and content
+  const getTableSignature = (table) => {
+    const rows = table.rows ? table.rows.length : 0;
+    const cols = table.rows && table.rows[0] ? table.rows[0].cells.length : 0;
+    const firstCellText = table.rows && table.rows[0] && table.rows[0].cells[0] 
+      ? (table.rows[0].cells[0].textContent || '').trim().substring(0, 50)
+      : '';
+    
+    return { rows, cols, firstCellText };
+  };
+  
+  const rightMatched = new Set();
+  const leftMatched = new Set();
+  
+  // Match tables by signature
+  leftTables.forEach((leftTable, leftIndex) => {
+    if (leftMatched.has(leftIndex)) return;
+    
+    const leftSig = getTableSignature(leftTable);
+    
+    rightTables.forEach((rightTable, rightIndex) => {
+      if (rightMatched.has(rightIndex)) return;
+      
+      const rightSig = getTableSignature(rightTable);
+      
+      if (leftSig.rows === rightSig.rows && 
+          leftSig.cols === rightSig.cols &&
+          leftSig.firstCellText === rightSig.firstCellText) {
+        
+        // Tables match structurally, now compare content
+        const cellChanges = compareTableCells(leftTable, rightTable);
+        additions += cellChanges.additions;
+        deletions += cellChanges.deletions;
+        
+        leftMatched.add(leftIndex);
+        rightMatched.add(rightIndex);
+        return;
+      }
+    });
+  });
+  
+  // Highlight new tables in right document
+  rightTables.forEach((rightTable, rightIndex) => {
+    if (!rightMatched.has(rightIndex)) {
+      rightTable.classList.add('git-table-added');
+      rightTable.style.outline = '3px solid #22c55e';
+      rightTable.style.outlineOffset = '2px';
+      rightTable.style.backgroundColor = '#f0fdf4';
+      
+      // Add table label
+      const label = document.createElement('div');
+      label.className = 'table-change-label';
+      label.style.cssText = `
+        background: #22c55e;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px 4px 0 0;
+        font-size: 12px;
+        font-weight: bold;
+        margin-bottom: -1px;
+      `;
+      label.textContent = 'NEW TABLE';
+      
+      rightTable.parentNode.insertBefore(label, rightTable);
+      additions++;
+    }
+  });
+  
+  // Add placeholders for removed tables
+  leftTables.forEach((leftTable, leftIndex) => {
+    if (!leftMatched.has(leftIndex)) {
+      const placeholder = createTablePlaceholder(leftTable, 'removed');
+      
+      // Insert at appropriate position
+      if (leftIndex < rightTables.length) {
+        rightTables[leftIndex].parentNode.insertBefore(placeholder, rightTables[leftIndex]);
+      } else {
+        rightDiv.appendChild(placeholder);
+      }
+      
+      deletions++;
+    }
+  });
+  
+  return { additions, deletions };
+};
+
+// Enhanced table cell comparison
+const compareTableCells = (leftTable, rightTable) => {
+  const leftRows = Array.from(leftTable.rows || []);
+  const rightRows = Array.from(rightTable.rows || []);
+  
+  let additions = 0;
+  let deletions = 0;
+  
+  const maxRows = Math.max(leftRows.length, rightRows.length);
+  
+  for (let r = 0; r < maxRows; r++) {
+    const leftRow = leftRows[r];
+    const rightRow = rightRows[r];
+    
+    if (leftRow && !rightRow) {
+      // Row was removed - add placeholder in right table
+      const placeholderRow = rightTable.insertRow(r);
+      placeholderRow.className = 'git-row-removed-placeholder';
+      placeholderRow.style.cssText = `
+        background-color: #fef2f2;
+        border: 2px dashed #ef4444;
+        opacity: 0.7;
+      `;
+      
+      const cellCount = leftRow.cells.length;
+      for (let c = 0; c < cellCount; c++) {
+        const placeholderCell = placeholderRow.insertCell(c);
+        placeholderCell.textContent = '[REMOVED]';
+        placeholderCell.style.cssText = `
+          color: #991b1b;
+          font-style: italic;
+          text-align: center;
+          padding: 8px;
+        `;
+      }
+      deletions++;
+      
+    } else if (!leftRow && rightRow) {
+      // Row was added
+      rightRow.classList.add('git-row-added');
+      rightRow.style.backgroundColor = '#f0fdf4';
+      rightRow.style.borderLeft = '4px solid #22c55e';
+      additions++;
+      
+    } else if (leftRow && rightRow) {
+      // Compare cells in the row
+      const leftCells = Array.from(leftRow.cells || []);
+      const rightCells = Array.from(rightRow.cells || []);
+      const maxCells = Math.max(leftCells.length, rightCells.length);
+      
+      for (let c = 0; c < maxCells; c++) {
+        const leftCell = leftCells[c];
+        const rightCell = rightCells[c];
+        
+        if (leftCell && !rightCell) {
+          // Cell was removed
+          const placeholderCell = rightRow.insertCell(c);
+          placeholderCell.className = 'git-cell-removed-placeholder';
+          placeholderCell.textContent = '[REMOVED]';
+          placeholderCell.style.cssText = `
+            background-color: #fef2f2;
+            border: 1px dashed #ef4444;
+            color: #991b1b;
+            font-style: italic;
+            text-align: center;
+            padding: 8px;
+          `;
+          deletions++;
+          
+        } else if (!leftCell && rightCell) {
+          // Cell was added
+          rightCell.classList.add('git-cell-added');
+          rightCell.style.backgroundColor = '#f0fdf4';
+          rightCell.style.border = '2px solid #22c55e';
+          additions++;
+          
+        } else if (leftCell && rightCell) {
+          const leftText = (leftCell.textContent || '').trim();
+          const rightText = (rightCell.textContent || '').trim();
+          
+          if (!areTextsEqual(leftText, rightText)) {
+            // Cell content was modified
+            rightCell.classList.add('git-cell-modified');
+            rightCell.style.backgroundColor = '#fffbeb';
+            rightCell.style.border = '2px solid #f59e0b';
+            
+            // Apply word-level highlighting within the cell
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(leftText, rightText);
+            dmp.diff_cleanupSemantic(diffs);
+            
+            let highlightedHtml = '';
+            diffs.forEach(diff => {
+              const [operation, text] = diff;
+              if (operation === 1) {
+                highlightedHtml += `<span class="git-inline-added">${escapeHtml(text)}</span>`;
+              } else if (operation === -1) {
+                highlightedHtml += `<span class="git-inline-removed">${escapeHtml(text)}</span>`;
+              } else {
+                highlightedHtml += escapeHtml(text);
+              }
+            });
+            
+            rightCell.innerHTML = highlightedHtml;
+            additions++;
+            deletions++;
+          }
+        }
+      }
+    }
+  }
+  
+  return { additions, deletions };
+};
+
+// Enhanced text comparison with right-side highlighting
+const compareAndHighlightText = (leftDiv, rightDiv) => {
+  const leftBlocks = getTextBlocks(leftDiv);
+  const rightBlocks = getTextBlocks(rightDiv);
+  
+  let additions = 0;
+  let deletions = 0;
+  
+  // Use diff algorithm to align text blocks
+  const leftTexts = leftBlocks.map(block => block.text);
+  const rightTexts = rightBlocks.map(block => block.text);
+  
+  const diff = diffArrays(leftTexts, rightTexts, {
+    comparator: (left, right) => areTextsEqual(left, right)
+  });
+  
+  let leftIndex = 0;
+  let rightIndex = 0;
+  
+  diff.forEach(part => {
+    if (part.added) {
+      // Text blocks added in right document
+      for (let i = 0; i < part.count; i++) {
+        const rightBlock = rightBlocks[rightIndex++];
+        if (rightBlock) {
+          rightBlock.element.classList.add('git-line-added');
+          rightBlock.element.style.cssText = `
+            background: linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%);
+            border-left: 4px solid #22c55e;
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.15);
+            position: relative;
+          `;
+          
+          // Add change indicator
+          const indicator = document.createElement('span');
+          indicator.style.cssText = `
+            position: absolute;
+            left: -2px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #22c55e;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+          `;
+          indicator.textContent = '➕';
+          rightBlock.element.appendChild(indicator);
+          
+          additions++;
+        }
+      }
+    } else if (part.removed) {
+      // Text blocks removed from right document - add placeholders
+      for (let i = 0; i < part.count; i++) {
+        const leftBlock = leftBlocks[leftIndex++];
+        if (leftBlock) {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'git-line-placeholder placeholder-removed';
+          placeholder.style.cssText = `
+            background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+            border: 2px dashed #ef4444;
+            margin: 8px 0;
+            border-radius: 8px;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 12px 16px;
+            font-style: italic;
+            color: #991b1b;
+            position: relative;
+          `;
+          
+          const icon = document.createElement('span');
+          icon.style.marginRight = '8px';
+          icon.textContent = '🗑️';
+          
+          const text = document.createElement('span');
+          text.textContent = `Removed: ${leftBlock.text.substring(0, 100)}${leftBlock.text.length > 100 ? '...' : ''}`;
+          
+          placeholder.appendChild(icon);
+          placeholder.appendChild(text);
+          
+          // Insert placeholder at appropriate position
+          if (rightIndex < rightBlocks.length) {
+            rightBlocks[rightIndex].element.parentNode.insertBefore(placeholder, rightBlocks[rightIndex].element);
+          } else {
+            rightDiv.appendChild(placeholder);
+          }
+          
+          deletions++;
+        }
+      }
+    } else {
+      // Equal blocks - check for word-level differences
+      for (let i = 0; i < part.count; i++) {
+        const leftBlock = leftBlocks[leftIndex++];
+        const rightBlock = rightBlocks[rightIndex++];
+        
+        if (leftBlock && rightBlock && !areTextsEqual(leftBlock.text, rightBlock.text)) {
+          // Apply word-level highlighting
+          const dmp = new diff_match_patch();
+          const diffs = dmp.diff_main(leftBlock.text, rightBlock.text);
+          dmp.diff_cleanupSemantic(diffs);
+          
+          let highlightedHtml = '';
+          let hasChanges = false;
+          
+          diffs.forEach(diff => {
+            const [operation, text] = diff;
+            if (operation === 1) {
+              highlightedHtml += `<span class="git-inline-added">${escapeHtml(text)}</span>`;
+              hasChanges = true;
+              additions++;
+            } else if (operation === -1) {
+              highlightedHtml += `<span class="git-inline-removed">${escapeHtml(text)}</span>`;
+              hasChanges = true;
+              deletions++;
+            } else {
+              highlightedHtml += escapeHtml(text);
+            }
+          });
+          
+          if (hasChanges) {
+            rightBlock.element.classList.add('git-line-modified');
+            rightBlock.element.style.cssText = `
+              background: linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);
+              border-left: 4px solid #f59e0b;
+              padding: 8px 12px;
+              margin: 4px 0;
+              border-radius: 6px;
+              box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+              position: relative;
+            `;
+            
+            rightBlock.element.innerHTML = highlightedHtml;
+            
+            // Add change indicator
+            const indicator = document.createElement('span');
+            indicator.style.cssText = `
+              position: absolute;
+              left: -2px;
+              top: 50%;
+              transform: translateY(-50%);
+              background: #f59e0b;
+              color: white;
+              width: 20px;
+              height: 20px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 10px;
+              font-weight: bold;
+            `;
+            indicator.textContent = '✏️';
+            rightBlock.element.appendChild(indicator);
+          }
+        }
+      }
+    }
+  });
+  
+  return { additions, deletions };
+};
+
+// Get text blocks for comparison
+const getTextBlocks = (container) => {
+  const blocks = [];
+  const elements = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, div');
+  
+  elements.forEach(element => {
+    // Skip if inside table, already processed, or is a placeholder
+    if (isInsideTable(element) || 
+        element.classList.contains('git-line-added') ||
+        element.classList.contains('git-line-removed') ||
+        element.classList.contains('git-line-modified') ||
+        element.classList.contains('placeholder-removed') ||
+        element.classList.contains('placeholder-added') ||
+        element.classList.contains('table-placeholder') ||
+        element.classList.contains('image-placeholder')) {
+      return;
+    }
+    
+    const text = (element.textContent || '').trim();
+    if (text) {
+      blocks.push({
+        element,
+        text,
+        tagName: element.tagName.toLowerCase()
+      });
+    }
+  });
+  
+  return blocks;
 };
 
 // Main function to ensure structural alignment between documents
